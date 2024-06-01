@@ -1,22 +1,43 @@
-import { nanoid } from '@/lib/utils'
-import { Chat } from '@/components/chat'
-import { AI } from '@/lib/chat/actions'
-import { auth } from '@/auth'
-import { Session } from '@/lib/types'
-import { getMissingKeys } from '../actions'
+"use client";
 
-export const metadata = {
-  title: 'Next.js AI Chatbot'
-}
+import { Thread } from "@/components/ui/assistant-ui/thread";
+import type { AI, UIState } from "@/lib/chat/actions";
+import { nanoid } from "@/lib/utils";
+import {
+	type AppendMessage,
+	AssistantRuntimeProvider,
+} from "@assistant-ui/react";
+import { useVercelRSCRuntime } from "@assistant-ui/react-ai-sdk";
+import { useActions, useUIState } from "ai/rsc";
 
-export default async function IndexPage() {
-  const id = nanoid()
-  const session = (await auth()) as Session
-  const missingKeys = await getMissingKeys()
+export default function IndexPage() {
+	const { submitUserMessage } = useActions();
+	const [messages, setMessages] = useUIState<typeof AI>();
 
-  return (
-    <AI initialAIState={{ chatId: id, interactions: [], messages: [] }}>
-      <Chat id={id} session={session} missingKeys={missingKeys} />
-    </AI>
-  )
+	const next = async (m: AppendMessage) => {
+		if (m.content[0].type !== "text")
+			throw new Error("Only text messages are supported");
+
+		const input = m.content[0].text;
+
+		// Optimistically add user message UI
+		setMessages((currentConversation: UIState) => [
+			...currentConversation,
+			{ id: nanoid(), role: "user", display: input },
+		]);
+
+		// Submit and get response message
+		const message = await submitUserMessage(input);
+		setMessages((currentConversation: UIState) => [
+			...currentConversation,
+			message,
+		]);
+	};
+
+	const runtime = useVercelRSCRuntime({ messages, append: next });
+	return (
+		<AssistantRuntimeProvider runtime={runtime}>
+			<Thread />
+		</AssistantRuntimeProvider>
+	);
 }

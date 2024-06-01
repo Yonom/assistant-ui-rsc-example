@@ -1,14 +1,16 @@
-import { SidebarDesktop } from '@/components/sidebar-desktop'
+import { AI } from "@/lib/chat/actions";
+import { nanoid } from "@/lib/utils";
+import type React from "react";
 
 interface ChatLayoutProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export default async function ChatLayout({ children }: ChatLayoutProps) {
+  const id = nanoid();
   return (
-    <div className="relative flex h-[calc(100vh_-_theme(spacing.16))] overflow-hidden">
-      <SidebarDesktop />
-      {children}
-    </div>
+    <AI initialAIState={{ chatId: id, interactions: [], messages: [] }}>
+      <div className="overflow-hidden h-screen">{children}</div>
+    </AI>
   )
 }

@@ -52,7 +52,7 @@ export const BoardingPass = ({
         </div>
       </div>
       <div className="grid gap-1 p-4 rounded-xl bg-zinc-50">
-        <div className="font-medium text-lg">Rauch / Guillermo</div>
+        <div className="font-medium text-lg">Farshid / Simon</div>
         <div className="flex text-sm justify-between">
           <div>{summary.departure}</div>
           <div className="">{summary.date}</div>

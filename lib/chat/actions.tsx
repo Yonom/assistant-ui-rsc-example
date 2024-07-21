@@ -8,17 +8,13 @@ import {
   createAI,
   createStreamableUI,
   getMutableAIState,
-  getAIState,
   createStreamableValue
 } from 'ai/rsc'
 
 import { BotCard, BotMessage } from '@/components/stocks'
 
 import { nanoid, sleep } from '@/lib/utils'
-import { saveChat } from '@/app/actions'
-import { SpinnerMessage, UserMessage } from '@/components/stocks/message'
-import { Chat } from '../types'
-import { auth } from '@/auth'
+import { SpinnerMessage } from '@/components/stocks/message'
 import { FlightStatus } from '@/components/flights/flight-status'
 import { SelectSeats } from '@/components/flights/select-seats'
 import { ListFlights } from '@/components/flights/list-flights'
@@ -27,112 +23,13 @@ import { PurchaseTickets } from '@/components/flights/purchase-ticket'
 import { CheckIcon, SpinnerIcon } from '@/components/ui/icons'
 import { format } from 'date-fns'
 import { streamText } from 'ai'
-import { google } from '@ai-sdk/google'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { ListHotels } from '@/components/hotels/list-hotels'
 import { Destinations } from '@/components/flights/destinations'
-import { Video } from '@/components/media/video'
-import { rateLimit } from './ratelimit'
-
-const genAI = new GoogleGenerativeAI(
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY || ''
-)
-
-async function describeImage(imageBase64: string) {
-  'use server'
-
-  await rateLimit()
-
-  const aiState = getMutableAIState()
-  const spinnerStream = createStreamableUI(null)
-  const messageStream = createStreamableUI(null)
-  const uiStream = createStreamableUI()
-
-  uiStream.update(
-    <BotCard>
-      <Video isLoading />
-    </BotCard>
-  )
-  ;(async () => {
-    try {
-      let text = ''
-
-      // attachment as video for demo purposes,
-      // add your implementation here to support
-      // video as input for prompts.
-      if (imageBase64 === '') {
-        await new Promise(resolve => setTimeout(resolve, 5000))
-
-        text = `
-      The books in this image are:
-
-      1. The Little Prince by Antoine de Saint-Exupéry
-      2. The Prophet by Kahlil Gibran
-      3. Man's Search for Meaning by Viktor Frankl
-      4. The Alchemist by Paulo Coelho
-      5. The Kite Runner by Khaled Hosseini
-      6. To Kill a Mockingbird by Harper Lee
-      7. The Catcher in the Rye by J.D. Salinger
-      8. The Great Gatsby by F. Scott Fitzgerald
-      9. 1984 by George Orwell
-      10. Animal Farm by George Orwell
-      `
-      } else {
-        const imageData = imageBase64.split(',')[1]
-
-        const model = genAI.getGenerativeModel({ model: 'gemini-pro-vision' })
-        const prompt = 'List the books in this image.'
-        const image = {
-          inlineData: {
-            data: imageData,
-            mimeType: 'image/png'
-          }
-        }
-
-        const result = await model.generateContent([prompt, image])
-        text = result.response.text()
-        console.log(text)
-      }
-
-      spinnerStream.done(null)
-      messageStream.done(null)
-
-      uiStream.done(
-        <BotCard>
-          <Video />
-        </BotCard>
-      )
-
-      aiState.done({
-        ...aiState.get(),
-        interactions: [text]
-      })
-    } catch (e) {
-      console.error(e)
-
-      const error = new Error(
-        'The AI got rate limited, please try again later.'
-      )
-      uiStream.error(error)
-      spinnerStream.error(error)
-      messageStream.error(error)
-      aiState.done()
-    }
-  })()
-
-  return {
-    id: nanoid(),
-    attachments: uiStream.value,
-    spinner: spinnerStream.value,
-    display: messageStream.value
-  }
-}
 
 async function submitUserMessage(content: string) {
   'use server'
-
-  await rateLimit()
 
   const aiState = getMutableAIState()
 
@@ -162,7 +59,7 @@ async function submitUserMessage(content: string) {
   ;(async () => {
     try {
       const result = await streamText({
-        model: google('models/gemini-1.5-flash'),
+        model: openai('gpt-3.5-turbo'),
         temperature: 0,
         tools: {
           showFlights: {
@@ -479,6 +376,7 @@ async function submitUserMessage(content: string) {
 
   return {
     id: nanoid(),
+    role: 'assistant',
     attachments: uiStream.value,
     spinner: spinnerStream.value,
     display: messageStream.value
@@ -589,6 +487,7 @@ export type AIState = {
 
 export type UIState = {
   id: string
+  role: 'user' | 'assistant'
   display: React.ReactNode
   spinner?: React.ReactNode
   attachments?: React.ReactNode
@@ -598,94 +497,8 @@ export const AI = createAI<AIState, UIState>({
   actions: {
     submitUserMessage,
     requestCode,
-    validateCode,
-    describeImage
+    validateCode
   },
   initialUIState: [],
-  initialAIState: { chatId: nanoid(), interactions: [], messages: [] },
-  unstable_onGetUIState: async () => {
-    'use server'
-
-    const session = await auth()
-
-    if (session && session.user) {
-      const aiState = getAIState()
-
-      if (aiState) {
-        const uiState = getUIStateFromAIState(aiState)
-        return uiState
-      }
-    } else {
-      return
-    }
-  },
-  unstable_onSetAIState: async ({ state }) => {
-    'use server'
-
-    const session = await auth()
-
-    if (session && session.user) {
-      const { chatId, messages } = state
-
-      const createdAt = new Date()
-      const userId = session.user.id as string
-      const path = `/chat/${chatId}`
-      const title = messages[0].content.substring(0, 100)
-
-      const chat: Chat = {
-        id: chatId,
-        title,
-        userId,
-        createdAt,
-        messages,
-        path
-      }
-
-      await saveChat(chat)
-    } else {
-      return
-    }
-  }
+  initialAIState: { chatId: nanoid(), interactions: [], messages: [] }
 })
-
-export const getUIStateFromAIState = (aiState: Chat) => {
-  return aiState.messages
-    .filter(message => message.role !== 'system')
-    .map((message, index) => ({
-      id: `${aiState.chatId}-${index}`,
-      display:
-        message.role === 'assistant' ? (
-          message.display?.name === 'showFlights' ? (
-            <BotCard>
-              <ListFlights summary={message.display.props.summary} />
-            </BotCard>
-          ) : message.display?.name === 'showSeatPicker' ? (
-            <BotCard>
-              <SelectSeats summary={message.display.props.summary} />
-            </BotCard>
-          ) : message.display?.name === 'showHotels' ? (
-            <BotCard>
-              <ListHotels />
-            </BotCard>
-          ) : message.content === 'The purchase has completed successfully.' ? (
-            <BotCard>
-              <PurchaseTickets status="expired" />
-            </BotCard>
-          ) : message.display?.name === 'showBoardingPass' ? (
-            <BotCard>
-              <BoardingPass summary={message.display.props.summary} />
-            </BotCard>
-          ) : message.display?.name === 'listDestinations' ? (
-            <BotCard>
-              <Destinations destinations={message.display.props.destinations} />
-            </BotCard>
-          ) : (
-            <BotMessage content={message.content} />
-          )
-        ) : message.role === 'user' ? (
-          <UserMessage showAvatar>{message.content}</UserMessage>
-        ) : (
-          <BotMessage content={message.content} />
-        )
-    }))
-}

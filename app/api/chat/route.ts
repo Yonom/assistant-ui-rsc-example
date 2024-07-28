@@ -1,15 +1,24 @@
 import cors from "@/app/cors";
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
+import { NextApiResponse } from "next";
 import { NextRequest, NextResponse } from "next/server";
+import * as process from "node:process";
 
-export const maxDuration = 30;
+export const maxDuration = 300;
 
 export async function OPTIONS(req: NextRequest) {
   return cors(req, NextResponse.json({}));
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest, res: NextApiResponse) {
+  if (req.headers.get("x-api-key") !== process.env.X_API_KEY) {
+    res.status(401).json({
+      error: "User is not authenticated",
+    });
+    return;
+  }
+
   const { messages } = await req.json();
 
   const result = await streamText({

@@ -5,7 +5,7 @@ import { NextApiResponse } from "next";
 import { NextRequest, NextResponse } from "next/server";
 import * as process from "node:process";
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 export async function OPTIONS(req: NextRequest) {
   return cors(req, NextResponse.json({}));
